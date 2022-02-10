@@ -16,6 +16,9 @@ from torch.autograd import Function
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torchvision.models import resnet
+import torchvision
+from torch2trt import torch2trt
+import tensorrt as trt
 
 # コマンドラインの引数系
 def parse():
@@ -91,10 +94,17 @@ def main():
                                                         [600, 950, 1300, 1650],
                                                         gamma=0.1)
 
-    load_path = './drive/MyDrive/idfd_epoch_1999.pth'
+    # load_path = './drive/MyDrive/idfd_epoch_1999.pth'
+    load_path = './idfd_epoch_1999.pth'
     load_weights = torch.load(load_path,map_location=device)
     # 余分なキーが含まれていても無視してくれるらしい
     net.load_state_dict(load_weights,strict=False)
+
+    net.eval()    # 評価モード
+
+    model = torchvision.models.resnet18(pretrained=True).cuda().half().eval()
+    data = torch.randn((1, 3, 32, 32)).cuda()
+    net = torch2trt(net, [data], max_batch_size=128, fp16_mode=False)
 
     if torch.cuda.is_available():
         # GPUを並列に使用
@@ -110,7 +120,6 @@ def main():
     # 学習済みモデルの読み込み
     # load_path = './mnt/nvme/internship/idfd_epoch_1999.pth'
 
-    net.eval()    # 評価モード
     # add -----------------------------------
 
     # check clustering acc
@@ -124,13 +133,15 @@ def main():
     # 評価時間計測 start
     start_eval_time = time.perf_counter()
     count = 0
+
+    #add ----------
+
     for batch_idx, (inputs, _,
         indexes) in enumerate(tqdm.tqdm(train_loader)):
     #             optimizer.zero_grad()
         inputs = inputs.to(device, dtype=torch.float32, non_blocking=True)
     #             indexes = indexes.to(device, non_blocking=True)
     # CNN backbone処理
-
         features = norm(net(inputs))
         features_np = features.cpu().detach().numpy()
         # features_np = features.cpu().detach().numpy().cppy
@@ -321,4 +332,3 @@ if __name__ == "__main__":
     all_measure = end_all_time - start_all_time
     print("all_measure_time:")
     print(all_measure)
-
